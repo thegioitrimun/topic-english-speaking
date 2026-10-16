@@ -581,11 +581,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function playSpeech(id) {
-    // If clicking same card while Kokoro audio is playing/paused
+    // If clicking same card while Audio is playing/paused
     if (state.currentlyPlayingId === id && state.ai.currentAudio) {
       if (state.ai.currentAudio.paused) {
         state.ai.currentAudio.play();
-        updateSpeechStatus(id, true, `Đang đọc (${state.ai.selectedVoice})...`);
+        updateSpeechStatus(id, true, `Đang đọc (${state.ai.currentAudioSource || 'AI'})...`);
       } else {
         state.ai.currentAudio.pause();
         updateSpeechStatus(id, false, 'Đang tạm dừng');
@@ -613,16 +613,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
     state.currentlyPlayingId = id;
 
-    // Use Kokoro TTS if available
+    // 1. Priority 1: Check if pre-rendered Kokoro MP3 file exists (zero latency)
+    const preRecordedUrl = `audio/topic-${id}.mp3`;
+    try {
+      updateSpeechStatus(id, true, 'Đang tải âm thanh AI...');
+      const checkRes = await fetch(preRecordedUrl, { method: 'HEAD' });
+      if (checkRes.ok) {
+        if (state.currentlyPlayingId !== id) return;
+
+        const audio = new Audio(preRecordedUrl);
+        audio.playbackRate = state.speechRate;
+        state.ai.currentAudio = audio;
+        state.ai.currentAudioSource = 'AI Đọc Sẵn Studio';
+
+        audio.onended = () => {
+          stopSpeech();
+          updateSpeechStatus(id, false, 'Hoàn thành bài đọc');
+        };
+
+        audio.onerror = () => {
+          playWithDynamicKokoro(topic, id);
+        };
+
+        await audio.play();
+        updateSpeechStatus(id, true, 'Đang phát âm (AI Studio 24kHz)...');
+        return;
+      }
+    } catch (e) {
+      // Fall through to dynamic Kokoro if pre-rendered file is not accessible
+    }
+
+    // 2. Priority 2: Dynamic Kokoro synthesis on localhost
+    playWithDynamicKokoro(topic, id);
+  }
+
+  async function playWithDynamicKokoro(topic, id) {
     if (state.ai.kokoroAvailable) {
       updateSpeechStatus(id, true, 'Đang tạo giọng Kokoro AI...');
       try {
         const audioUrl = await synthesizeKokoroAudio(topic.fullSpeech, state.ai.selectedVoice, state.speechRate);
-        if (state.currentlyPlayingId !== id) return; // cancelled while loading
+        if (state.currentlyPlayingId !== id) return;
 
         const audio = new Audio(audioUrl);
         audio.playbackRate = state.speechRate;
         state.ai.currentAudio = audio;
+        state.ai.currentAudioSource = `Kokoro (${state.ai.selectedVoice})`;
 
         audio.onended = () => {
           stopSpeech();
