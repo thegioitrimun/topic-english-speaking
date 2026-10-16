@@ -15,6 +15,24 @@ document.addEventListener('DOMContentLoaded', () => {
     timerTotalSeconds: 180,
     timerRemainingSeconds: 180,
     isTimerRunning: false,
+    ai: {
+      kokoroUrl: 'http://localhost:8880',
+      ollamaUrl: 'http://localhost:11434',
+      kokoroAvailable: false,
+      ollamaAvailable: false,
+      ollamaModel: 'gemma3:4b',
+      selectedVoice: localStorage.getItem('tvu_kokoro_voice') || 'af_heart',
+      audioCache: new Map(),
+      currentAudio: null,
+      currentAudioId: null,
+      coachTopicId: 1,
+      coachMode: 'exam_qa',
+      autoSpeak: true,
+      isRecording: false,
+      recognition: null,
+      chatMessages: [],
+      isGenerating: false,
+    },
   };
 
   // DOM Elements
@@ -37,6 +55,31 @@ document.addEventListener('DOMContentLoaded', () => {
   const timerResetBtn = document.getElementById('timerResetBtn');
   const toast = document.getElementById('toast');
   const toastMsg = document.getElementById('toastMsg');
+
+  // AI & Kokoro DOM Elements
+  const openAiCoachBtn = document.getElementById('openAiCoachBtn');
+  const hubOpenCoachBtn = document.getElementById('hubOpenCoachBtn');
+  const closeAiCoachBtn = document.getElementById('closeAiCoachBtn');
+  const aiCoachOverlay = document.getElementById('aiCoachOverlay');
+  const statusKokoro = document.getElementById('statusKokoro');
+  const stateKokoro = document.getElementById('stateKokoro');
+  const statusOllama = document.getElementById('statusOllama');
+  const stateOllama = document.getElementById('stateOllama');
+  const headerAiBadge = document.getElementById('headerAiBadge');
+  const kokoroVoiceSelect = document.getElementById('kokoroVoiceSelect');
+  const testKokoroVoiceBtn = document.getElementById('testKokoroVoiceBtn');
+  const coachTopicSelect = document.getElementById('coachTopicSelect');
+  const coachModeSelect = document.getElementById('coachModeSelect');
+  const autoSpeakCheckbox = document.getElementById('autoSpeakCheckbox');
+  const coachChatStream = document.getElementById('coachChatStream');
+  const coachInputText = document.getElementById('coachInputText');
+  const coachSendBtn = document.getElementById('coachSendBtn');
+  const coachMicBtn = document.getElementById('coachMicBtn');
+  const coachMicTip = document.getElementById('coachMicTip');
+  const coachAudioIndicator = document.getElementById('coachAudioIndicator');
+  const coachAudioStatusText = document.getElementById('coachAudioStatusText');
+  const stopCoachAudioBtn = document.getElementById('stopCoachAudioBtn');
+  const coachModelBadge = document.getElementById('coachModelBadge');
 
   // Initialize Speech Synthesis
   const synth = window.speechSynthesis;
@@ -467,11 +510,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // =========================================================================
-  // Web Speech API: Text-to-Speech
+  // Audio Engine: Kokoro AI TTS (with Web Speech API Fallback)
   // =========================================================================
   function stopSpeech() {
-    if (!synth) return;
-    synth.cancel();
+    // 1. Stop HTML5 Kokoro Audio if playing
+    if (state.ai.currentAudio) {
+      state.ai.currentAudio.pause();
+      state.ai.currentAudio.currentTime = 0;
+      state.ai.currentAudio = null;
+    }
+
+    // 2. Stop Web Speech API
+    if (synth && synth.speaking) {
+      synth.cancel();
+    }
+
+    // 3. Stop Coach Audio UI
+    if (coachAudioIndicator) {
+      coachAudioIndicator.style.display = 'none';
+    }
 
     if (state.currentlyPlayingId) {
       const card = document.getElementById(`topic-${state.currentlyPlayingId}`);
@@ -495,14 +552,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function playSpeech(id) {
-    if (!synth) {
-      showToast('Trình duyệt của bạn không hỗ trợ tính năng Web Speech API.');
+  async function synthesizeKokoroAudio(text, voice = state.ai.selectedVoice, speed = state.speechRate) {
+    const cleanText = text.trim();
+    const cacheKey = `${voice}_${speed}_${cleanText}`;
+    if (state.ai.audioCache.has(cacheKey)) {
+      return state.ai.audioCache.get(cacheKey);
+    }
+
+    const response = await fetch(`${state.ai.kokoroUrl}/v1/audio/speech`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: cleanText,
+        voice: voice,
+        speed: speed,
+        lang: 'en-us'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Kokoro error: HTTP ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const audioUrl = URL.createObjectURL(blob);
+    state.ai.audioCache.set(cacheKey, audioUrl);
+    return audioUrl;
+  }
+
+  async function playSpeech(id) {
+    // If clicking same card while Kokoro audio is playing/paused
+    if (state.currentlyPlayingId === id && state.ai.currentAudio) {
+      if (state.ai.currentAudio.paused) {
+        state.ai.currentAudio.play();
+        updateSpeechStatus(id, true, `Đang đọc (${state.ai.selectedVoice})...`);
+      } else {
+        state.ai.currentAudio.pause();
+        updateSpeechStatus(id, false, 'Đang tạm dừng');
+      }
       return;
     }
 
-    if (state.currentlyPlayingId === id && synth.speaking) {
-      // Toggle pause/resume
+    // If clicking same card while Web Speech API is speaking
+    if (state.currentlyPlayingId === id && synth && synth.speaking) {
       if (synth.paused) {
         synth.resume();
         updateSpeechStatus(id, true, 'Đang đọc...');
@@ -519,17 +611,54 @@ document.addEventListener('DOMContentLoaded', () => {
     const topic = TOPICS_DATA.find(t => t.id === id);
     if (!topic) return;
 
+    state.currentlyPlayingId = id;
+
+    // Use Kokoro TTS if available
+    if (state.ai.kokoroAvailable) {
+      updateSpeechStatus(id, true, 'Đang tạo giọng Kokoro AI...');
+      try {
+        const audioUrl = await synthesizeKokoroAudio(topic.fullSpeech, state.ai.selectedVoice, state.speechRate);
+        if (state.currentlyPlayingId !== id) return; // cancelled while loading
+
+        const audio = new Audio(audioUrl);
+        audio.playbackRate = state.speechRate;
+        state.ai.currentAudio = audio;
+
+        audio.onended = () => {
+          stopSpeech();
+          updateSpeechStatus(id, false, 'Hoàn thành bài đọc');
+        };
+
+        audio.onerror = () => {
+          fallbackWebSpeech(topic, id);
+        };
+
+        await audio.play();
+        updateSpeechStatus(id, true, `Đang đọc (${state.ai.selectedVoice})...`);
+      } catch (err) {
+        console.warn('Kokoro TTS failed, falling back to Web Speech API:', err);
+        fallbackWebSpeech(topic, id);
+      }
+    } else {
+      fallbackWebSpeech(topic, id);
+    }
+  }
+
+  function fallbackWebSpeech(topic, id) {
+    if (!synth) {
+      showToast('Trình duyệt không hỗ trợ phát âm.');
+      stopSpeech();
+      return;
+    }
+
     const utterance = new SpeechSynthesisUtterance(topic.fullSpeech);
     utterance.rate = state.speechRate;
     utterance.pitch = 1.0;
     utterance.lang = 'en-US';
-
-    if (englishVoice) {
-      utterance.voice = englishVoice;
-    }
+    if (englishVoice) utterance.voice = englishVoice;
 
     state.currentlyPlayingId = id;
-    updateSpeechStatus(id, true, 'Đang đọc...');
+    updateSpeechStatus(id, true, 'Đang đọc (Web Speech)...');
 
     utterance.onend = () => {
       stopSpeech();
@@ -729,6 +858,499 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // =========================================================================
+  // =========================================================================
+  // AI Services & Speaking Coach Management (Local LLM + Kokoro TTS)
+  // =========================================================================
+  async function initAiServices() {
+    // 1. Check Kokoro TTS Status
+    try {
+      const kRes = await fetch(`${state.ai.kokoroUrl}/health`, { signal: AbortSignal.timeout(3000) });
+      if (kRes.ok) {
+        const kData = await kRes.json();
+        state.ai.kokoroAvailable = true;
+        if (statusKokoro) {
+          statusKokoro.classList.add('online');
+          statusKokoro.classList.remove('offline');
+        }
+        if (stateKokoro) stateKokoro.textContent = `Online (${kData.kokoro_voices_count || 54} giọng)`;
+        console.log('✓ Kokoro TTS Connected:', kData);
+      } else {
+        throw new Error('Not OK');
+      }
+    } catch (e) {
+      state.ai.kokoroAvailable = false;
+      if (statusKokoro) {
+        statusKokoro.classList.add('offline');
+        statusKokoro.classList.remove('online');
+      }
+      if (stateKokoro) stateKokoro.textContent = 'Offline (Dùng Web Speech)';
+    }
+
+    // 2. Check Ollama Local LLM Status
+    try {
+      const oRes = await fetch(`${state.ai.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      if (oRes.ok) {
+        const oData = await oRes.json();
+        const models = oData.models || [];
+        const hasGemma = models.find(m => m.name.includes('gemma3') || m.name.includes('gemma'));
+        if (hasGemma) {
+          state.ai.ollamaModel = hasGemma.name;
+        } else if (models.length > 0) {
+          state.ai.ollamaModel = models[0].name;
+        }
+        state.ai.ollamaAvailable = true;
+        if (statusOllama) {
+          statusOllama.classList.add('online');
+          statusOllama.classList.remove('offline');
+        }
+        if (stateOllama) stateOllama.textContent = `Online (${state.ai.ollamaModel})`;
+        if (coachModelBadge) coachModelBadge.textContent = state.ai.ollamaModel;
+        if (headerAiBadge) headerAiBadge.textContent = 'Gemma 3';
+        console.log('✓ Ollama Local LLM Connected:', state.ai.ollamaModel);
+      } else {
+        throw new Error('Not OK');
+      }
+    } catch (e) {
+      state.ai.ollamaAvailable = false;
+      if (statusOllama) {
+        statusOllama.classList.add('offline');
+        statusOllama.classList.remove('online');
+      }
+      if (stateOllama) stateOllama.textContent = 'Offline';
+    }
+
+    // 3. Voice Selector Change Handler
+    if (kokoroVoiceSelect) {
+      kokoroVoiceSelect.value = state.ai.selectedVoice;
+      kokoroVoiceSelect.addEventListener('change', (e) => {
+        state.ai.selectedVoice = e.target.value;
+        localStorage.setItem('tvu_kokoro_voice', state.ai.selectedVoice);
+        showToast(`Đã đổi giọng đọc sang: ${state.ai.selectedVoice}`);
+      });
+    }
+
+    // 4. Test Voice Button
+    if (testKokoroVoiceBtn) {
+      testKokoroVoiceBtn.addEventListener('click', async () => {
+        stopSpeech();
+        const sampleText = "Hello! This is Kokoro AI text to speech. I will help you master English public speaking with natural pronunciation!";
+        testKokoroVoiceBtn.disabled = true;
+        testKokoroVoiceBtn.innerHTML = `<span>⏳ Đang tạo...</span>`;
+
+        try {
+          if (state.ai.kokoroAvailable) {
+            const url = await synthesizeKokoroAudio(sampleText, state.ai.selectedVoice, 1.0);
+            const audio = new Audio(url);
+            state.ai.currentAudio = audio;
+            audio.onended = () => {
+              testKokoroVoiceBtn.disabled = false;
+              testKokoroVoiceBtn.innerHTML = `<span>🔊 Thử giọng</span>`;
+            };
+            audio.onerror = () => {
+              testKokoroVoiceBtn.disabled = false;
+              testKokoroVoiceBtn.innerHTML = `<span>🔊 Thử giọng</span>`;
+            };
+            await audio.play();
+          } else {
+            showToast('Kokoro TTS hiện chưa kết nối. Đang thử bằng Web Speech API.');
+            const u = new SpeechSynthesisUtterance(sampleText);
+            u.lang = 'en-US';
+            u.onend = () => {
+              testKokoroVoiceBtn.disabled = false;
+              testKokoroVoiceBtn.innerHTML = `<span>🔊 Thử giọng</span>`;
+            };
+            synth.speak(u);
+          }
+        } catch (err) {
+          showToast('Lỗi phát âm: ' + err.message);
+          testKokoroVoiceBtn.disabled = false;
+          testKokoroVoiceBtn.innerHTML = `<span>🔊 Thử giọng</span>`;
+        }
+      });
+    }
+  }
+
+  function initAiCoach() {
+    // Populate Topic Selector in Coach
+    if (coachTopicSelect) {
+      coachTopicSelect.innerHTML = TOPICS_DATA.map(t =>
+        `<option value="${t.id}">Topic ${t.id}: ${t.title.slice(0, 48)}...</option>`
+      ).join('');
+
+      coachTopicSelect.addEventListener('change', (e) => {
+        state.ai.coachTopicId = parseInt(e.target.value, 10);
+        resetCoachConversation();
+      });
+    }
+
+    if (coachModeSelect) {
+      coachModeSelect.addEventListener('change', (e) => {
+        state.ai.coachMode = e.target.value;
+        resetCoachConversation();
+      });
+    }
+
+    if (autoSpeakCheckbox) {
+      autoSpeakCheckbox.checked = state.ai.autoSpeak;
+      autoSpeakCheckbox.addEventListener('change', (e) => {
+        state.ai.autoSpeak = e.target.checked;
+      });
+    }
+
+    // Open & Close Coach Modal Handlers
+    const openModal = (topicId) => {
+      if (topicId) {
+        state.ai.coachTopicId = topicId;
+        if (coachTopicSelect) coachTopicSelect.value = topicId;
+      }
+      if (aiCoachOverlay) {
+        aiCoachOverlay.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+      }
+      if (state.ai.chatMessages.length === 0) {
+        resetCoachConversation();
+      }
+      if (coachInputText) coachInputText.focus();
+    };
+
+    const closeModal = () => {
+      if (aiCoachOverlay) {
+        aiCoachOverlay.style.display = 'none';
+        document.body.style.overflow = '';
+      }
+      stopSpeech();
+      if (state.ai.isRecording && state.ai.recognition) {
+        state.ai.recognition.stop();
+      }
+    };
+
+    if (openAiCoachBtn) openAiCoachBtn.addEventListener('click', () => openModal(state.ai.coachTopicId));
+    if (hubOpenCoachBtn) hubOpenCoachBtn.addEventListener('click', () => openModal(state.ai.coachTopicId));
+    if (closeAiCoachBtn) closeAiCoachBtn.addEventListener('click', closeModal);
+
+    if (aiCoachOverlay) {
+      aiCoachOverlay.addEventListener('click', (e) => {
+        if (e.target === aiCoachOverlay) closeModal();
+      });
+    }
+
+    // Stop Coach Audio Button
+    if (stopCoachAudioBtn) {
+      stopCoachAudioBtn.addEventListener('click', () => {
+        stopSpeech();
+      });
+    }
+
+    // Quick Prompts Chips
+    document.querySelectorAll('.quick-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const prompt = chip.getAttribute('data-prompt');
+        if (prompt && coachInputText) {
+          coachInputText.value = prompt;
+          sendCoachMessage();
+        }
+      });
+    });
+
+    // Send Button & Textarea Enter Handler
+    if (coachSendBtn) {
+      coachSendBtn.addEventListener('click', sendCoachMessage);
+    }
+
+    if (coachInputText) {
+      coachInputText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendCoachMessage();
+        }
+      });
+    }
+
+    // Speech-to-Text Microphone
+    initCoachSpeechRecognition();
+  }
+
+  function initCoachSpeechRecognition() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      if (coachMicTip) coachMicTip.textContent = '💡 Trình duyệt hiện tại chưa hỗ trợ Web Speech API recognition (Hãy dùng Chrome hoặc Edge để nói qua micro).';
+      if (coachMicBtn) coachMicBtn.style.opacity = '0.5';
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        state.ai.isRecording = true;
+        if (coachMicBtn) coachMicBtn.classList.add('recording');
+        if (coachMicTip) coachMicTip.textContent = '🔴 Đang lắng nghe bạn nói tiếng Anh...';
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (coachInputText) coachInputText.value = transcript;
+      };
+
+      recognition.onerror = (event) => {
+        console.warn('Speech recognition error:', event.error);
+        state.ai.isRecording = false;
+        if (coachMicBtn) coachMicBtn.classList.remove('recording');
+        if (coachMicTip) coachMicTip.textContent = '⚠️ Không nhận diện được hoặc mic chưa được cấp quyền.';
+      };
+
+      recognition.onend = () => {
+        state.ai.isRecording = false;
+        if (coachMicBtn) coachMicBtn.classList.remove('recording');
+        if (coachMicTip) coachMicTip.textContent = '💡 Đã ghi nhận xong! Bạn có thể chỉnh sửa văn bản hoặc bấm "Gửi".';
+      };
+
+      state.ai.recognition = recognition;
+
+      if (coachMicBtn) {
+        coachMicBtn.addEventListener('click', () => {
+          if (state.ai.isRecording) {
+            recognition.stop();
+          } else {
+            stopSpeech();
+            try {
+              recognition.start();
+            } catch (err) {
+              console.warn(err);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('SpeechRecognition initialization error:', e);
+    }
+  }
+
+  function resetCoachConversation() {
+    state.ai.chatMessages = [];
+    if (coachChatStream) coachChatStream.innerHTML = '';
+
+    const topic = TOPICS_DATA.find(t => t.id === state.ai.coachTopicId) || TOPICS_DATA[0];
+    let greetingText = '';
+
+    if (state.ai.coachMode === 'exam_qa') {
+      greetingText = `Hello! I am your Public Speaking Examiner for **Topic ${topic.id}: ${topic.title}**.\n\nLet's test your speaking confidence! Here is your warm-up question: **Why is this topic important, and what is your personal experience or hook to engage the audience?**`;
+    } else if (state.ai.coachMode === 'feedback') {
+      greetingText = `Welcome! I'm your Speaking Coach for **Topic ${topic.id}: ${topic.title}**.\n\nPlease speak or type any part of your speech (your Hook, Body Points, or Conclusion). I will analyze your vocabulary, grammar, and delivery!`;
+    } else {
+      greetingText = `Hi there! Let's have a friendly spoken conversation about **${topic.title}**. Feel free to share your thoughts, and don't worry about making mistakes!`;
+    }
+
+    appendCoachMessage('assistant', greetingText, true);
+  }
+
+  function appendCoachMessage(role, text, shouldSpeak = false) {
+    state.ai.chatMessages.push({ role, content: text });
+
+    if (!coachChatStream) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = `chat-bubble-wrap ${role === 'assistant' ? 'tutor' : 'user'}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'bubble-avatar';
+    avatar.textContent = role === 'assistant' ? '🎓' : '👤';
+
+    const content = document.createElement('div');
+    content.className = 'bubble-content';
+
+    // Simple markdown-to-html (bold & line breaks)
+    const formatted = text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, '<br>');
+
+    content.innerHTML = formatted;
+
+    if (role === 'assistant') {
+      const actions = document.createElement('div');
+      actions.className = 'bubble-actions';
+
+      const audioBtn = document.createElement('button');
+      audioBtn.className = 'btn-bubble-audio';
+      audioBtn.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span>Nghe giọng Kokoro AI</span>
+      `;
+
+      audioBtn.addEventListener('click', () => {
+        speakCoachText(text);
+      });
+
+      actions.appendChild(audioBtn);
+      content.appendChild(actions);
+    }
+
+    wrap.appendChild(avatar);
+    wrap.appendChild(content);
+    coachChatStream.appendChild(wrap);
+
+    // Auto-scroll
+    coachChatStream.scrollTop = coachChatStream.scrollHeight;
+
+    if (role === 'assistant' && shouldSpeak && state.ai.autoSpeak) {
+      speakCoachText(text);
+    }
+  }
+
+  async function speakCoachText(rawText) {
+    stopSpeech();
+
+    // Clean text of markdown asterisks and URLs for speech
+    const cleanText = rawText
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/#+/g, '')
+      .replace(/<[^>]*>/g, '')
+      .trim();
+
+    if (!cleanText) return;
+
+    if (coachAudioIndicator) {
+      coachAudioIndicator.style.display = 'flex';
+      if (coachAudioStatusText) coachAudioStatusText.textContent = `Kokoro AI (${state.ai.selectedVoice}) đang phát âm...`;
+    }
+
+    if (state.ai.kokoroAvailable) {
+      try {
+        const audioUrl = await synthesizeKokoroAudio(cleanText, state.ai.selectedVoice, 1.0);
+        const audio = new Audio(audioUrl);
+        state.ai.currentAudio = audio;
+
+        audio.onended = () => {
+          if (coachAudioIndicator) coachAudioIndicator.style.display = 'none';
+        };
+
+        audio.onerror = () => {
+          if (coachAudioIndicator) coachAudioIndicator.style.display = 'none';
+        };
+
+        await audio.play();
+      } catch (err) {
+        console.warn('Kokoro audio failed:', err);
+        if (coachAudioIndicator) coachAudioIndicator.style.display = 'none';
+        if (synth) {
+          const u = new SpeechSynthesisUtterance(cleanText);
+          u.lang = 'en-US';
+          synth.speak(u);
+        }
+      }
+    } else if (synth) {
+      const u = new SpeechSynthesisUtterance(cleanText);
+      u.lang = 'en-US';
+      if (englishVoice) u.voice = englishVoice;
+      u.onend = () => {
+        if (coachAudioIndicator) coachAudioIndicator.style.display = 'none';
+      };
+      synth.speak(u);
+    }
+  }
+
+  async function sendCoachMessage() {
+    if (!coachInputText || state.ai.isGenerating) return;
+
+    const userText = coachInputText.value.trim();
+    if (!userText) return;
+
+    coachInputText.value = '';
+    appendCoachMessage('user', userText, false);
+
+    const topic = TOPICS_DATA.find(t => t.id === state.ai.coachTopicId) || TOPICS_DATA[0];
+
+    // Build system prompt for Gemma 3
+    const systemPrompt = `You are a supportive, high-energy English Speaking Coach at Tra Vinh University (TVU) helping a student with the course "Foundation of Public Speaking".
+The current presentation topic is: Topic ${topic.id}: "${topic.title}".
+Topic overview: ${topic.titleVi}.
+Outline Hook: "${topic.outline.hook}"
+Mode: ${state.ai.coachMode === 'exam_qa' ? 'Examiner Q&A (ask sharp, engaging follow-up questions to test public speaking depth)' : state.ai.coachMode === 'feedback' ? 'Speech Feedback (give constructive tips on pronunciation, formal phrasing, and delivery)' : 'Free Discussion'}.
+
+CRITICAL RULES:
+1. Always respond in natural, clear spoken English.
+2. Keep responses brief: 2 to 3 sentences max! Never produce huge walls of text because your response will be read aloud immediately via text-to-speech.
+3. If the student makes a grammatical or word-choice slip, gently point it out in 1 phrase, then encourage them.
+4. Always conclude with a conversational, thought-provoking question to prompt them to speak again.`;
+
+    // Show loading state
+    state.ai.isGenerating = true;
+    if (coachSendBtn) coachSendBtn.disabled = true;
+
+    const loadingWrap = document.createElement('div');
+    loadingWrap.className = 'chat-bubble-wrap tutor';
+    loadingWrap.id = 'coachLoadingBubble';
+    loadingWrap.innerHTML = `
+      <div class="bubble-avatar">🎓</div>
+      <div class="bubble-content" style="font-style: italic; color: var(--text-muted);">
+        <span>Gemma 3 đang suy nghĩ câu trả lời...</span>
+      </div>
+    `;
+    coachChatStream.appendChild(loadingWrap);
+    coachChatStream.scrollTop = coachChatStream.scrollHeight;
+
+    try {
+      if (state.ai.ollamaAvailable) {
+        // Prepare conversation messages (last 6 turns for context)
+        const recentMessages = state.ai.chatMessages.slice(-6).map(m => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content
+        }));
+
+        const payload = {
+          model: state.ai.ollamaModel,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...recentMessages
+          ],
+          stream: false
+        };
+
+        const response = await fetch(`${state.ai.ollamaUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
+        const data = await response.json();
+        const replyText = data.message?.content || "That's a very interesting thought! Can you explain a little bit more with an example?";
+
+        const loader = document.getElementById('coachLoadingBubble');
+        if (loader) loader.remove();
+
+        appendCoachMessage('assistant', replyText, true);
+      } else {
+        // Fallback simulated intelligent response if Ollama is temporarily offline
+        await new Promise(r => setTimeout(r, 600));
+        const loader = document.getElementById('coachLoadingBubble');
+        if (loader) loader.remove();
+
+        const fallbackReply = `Great point about "${topic.title}"! When speaking publicly, remember to pause after your key points to let the audience absorb your ideas. How would you conclude this thought powerfully?`;
+        appendCoachMessage('assistant', fallbackReply, true);
+      }
+    } catch (err) {
+      console.warn('Ollama request failed:', err);
+      const loader = document.getElementById('coachLoadingBubble');
+      if (loader) loader.remove();
+
+      appendCoachMessage('assistant', `That was great speaking! How would you use a real-life example to make this point even more convincing to your classmates?`, true);
+    } finally {
+      state.ai.isGenerating = false;
+      if (coachSendBtn) coachSendBtn.disabled = false;
+    }
+  }
+
   // Deep Link Handling (e.g. #topic-5)
   // =========================================================================
   function handleHashNavigation() {
@@ -744,10 +1366,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Initial Render
+  // Initial Render & Setup
   renderTopics(TOPICS_DATA);
   updateTimerDisplay();
   handleHashNavigation();
+  initAiServices();
+  initAiCoach();
 
   window.addEventListener('hashchange', handleHashNavigation);
 });

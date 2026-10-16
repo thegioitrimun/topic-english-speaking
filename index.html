@@ -22,6 +22,13 @@
       </a>
 
       <div class="header-actions">
+        <!-- AI Speaking Partner Trigger Button -->
+        <button id="openAiCoachBtn" class="btn-pill btn-ai-coach" title="Luyện nói phản xạ với Local LLM (Gemma 3) và Kokoro TTS">
+          <span class="ai-sparkle">🎙️</span>
+          <span>Luyện Nói AI</span>
+          <span class="ai-badge-live" id="headerAiBadge">Local</span>
+        </button>
+
         <!-- Practice Timer Trigger Button -->
         <button id="openTimerBtn" class="btn-pill" title="Mở đồng hồ bấm giờ luyện thuyết trình">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -88,6 +95,68 @@
         <div class="stat-card">
           <div class="stat-num">Audio AI</div>
           <div class="stat-label">Phát âm & Bấm giờ</div>
+        </div>
+      </div>
+
+      <!-- AI Services Status & Voice Bar -->
+      <div class="ai-hub-card" id="aiHubCard">
+        <div class="ai-hub-top">
+          <div class="ai-hub-title">
+            <span class="ai-hub-icon">⚡</span>
+            <div>
+              <div class="ai-hub-heading">Hệ Thống AI Local (Ollama Gemma 3 + Kokoro TTS)</div>
+              <div class="ai-hub-sub">Chạy offline trên máy của bạn • Giọng đọc tự nhiên Studio 24kHz • Luyện phản xạ thi 1-kèm-1</div>
+            </div>
+          </div>
+
+          <div class="ai-status-group">
+            <div class="ai-status-pill" id="statusKokoro" title="Mô hình Text-to-Speech Kokoro AI (Port 8880)">
+              <span class="status-pulse-dot"></span>
+              <span class="status-label">Kokoro TTS:</span>
+              <span class="status-state" id="stateKokoro">Kiểm tra...</span>
+            </div>
+            <div class="ai-status-pill" id="statusOllama" title="Mô hình ngôn ngữ lớn Gemma 3 (Port 11434)">
+              <span class="status-pulse-dot"></span>
+              <span class="status-label">Gemma 3:</span>
+              <span class="status-state" id="stateOllama">Kiểm tra...</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-hub-bottom">
+          <div class="ai-voice-selector-wrap">
+            <label for="kokoroVoiceSelect">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              </svg>
+              <span>Giọng đọc Kokoro:</span>
+            </label>
+            <select id="kokoroVoiceSelect" class="kokoro-voice-select">
+              <option value="af_heart">🇺🇸 af_heart — Nữ Mỹ ấm áp (Khuyên dùng)</option>
+              <option value="af_bella">🇺🇸 af_bella — Nữ Mỹ trong sáng, rõ chữ</option>
+              <option value="af_sarah">🇺🇸 af_sarah — Nữ Mỹ tự nhiên, biểu cảm</option>
+              <option value="af_sky">🇺🇸 af_sky — Nữ Mỹ năng động</option>
+              <option value="am_adam">🇺🇸 am_adam — Nam Mỹ trầm ấm, đĩnh đạc</option>
+              <option value="am_michael">🇺🇸 am_michael — Nam Mỹ tự tin, truyền cảm</option>
+              <option value="bf_emma">🇬🇧 bf_emma — Nữ Anh thanh lịch chuẩn RP</option>
+              <option value="bf_isabella">🇬🇧 bf_isabella — Nữ Anh dịu dàng</option>
+              <option value="bm_george">🇬🇧 bm_george — Nam Anh sang trọng</option>
+              <option value="bm_daniel">🇬🇧 bm_daniel — Nam Anh rõ ràng</option>
+            </select>
+            <button id="testKokoroVoiceBtn" class="btn-pill btn-test-voice" title="Nghe thử giọng mẫu">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span>Thử giọng</span>
+            </button>
+          </div>
+
+          <div class="ai-hub-action">
+            <button id="hubOpenCoachBtn" class="btn-pill btn-glow-coach">
+              <span>🎙️ Mở Phòng Luyện Nói 1-kèm-1 Với AI</span>
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -195,6 +264,98 @@
       <button id="timerResetBtn" class="timer-btn btn-reset">Đặt lại</button>
     </div>
   </aside>
+
+  <!-- AI Speaking Coach Modal (Gemma 3 + Kokoro TTS) -->
+  <div id="aiCoachOverlay" class="ai-coach-overlay" style="display:none;">
+    <div class="ai-coach-modal" role="dialog" aria-modal="true" aria-labelledby="coachModalTitle">
+      <!-- Modal Header -->
+      <div class="coach-modal-header">
+        <div class="coach-profile">
+          <div class="coach-avatar">
+            <span class="avatar-icon">🎓</span>
+            <span class="avatar-online-dot"></span>
+          </div>
+          <div>
+            <h2 id="coachModalTitle" class="coach-name">Gemma 3 Speaking Coach</h2>
+            <div class="coach-sub">Giảng viên ảo luyện nói tiếng Anh • ĐH Trà Vinh (TVU)</div>
+          </div>
+        </div>
+        <div class="coach-header-actions">
+          <div class="coach-model-tag" id="coachModelBadge">Gemma 3:4B</div>
+          <button id="closeAiCoachBtn" class="btn-icon" aria-label="Đóng phòng luyện nói">✕</button>
+        </div>
+      </div>
+
+      <!-- Coach Configuration Ribbon -->
+      <div class="coach-config-ribbon">
+        <div class="ribbon-field">
+          <label for="coachTopicSelect">Chủ đề:</label>
+          <select id="coachTopicSelect" class="coach-select"></select>
+        </div>
+        <div class="ribbon-field">
+          <label for="coachModeSelect">Chế độ:</label>
+          <select id="coachModeSelect" class="coach-select">
+            <option value="exam_qa">🎯 Giám khảo hỏi đáp phản biện (Exam Q&A)</option>
+            <option value="feedback">💡 Nhận xét & Sửa bài nói (Speech Feedback)</option>
+            <option value="free_talk">☕ Trò chuyện tự do theo chủ đề (Free Talk)</option>
+          </select>
+        </div>
+        <div class="ribbon-field ribbon-toggle">
+          <label class="toggle-switch" title="Tự động đọc phản hồi bằng Kokoro AI">
+            <input type="checkbox" id="autoSpeakCheckbox" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">Tự động đọc Kokoro</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Chat History Stream -->
+      <div class="coach-chat-stream" id="coachChatStream">
+        <!-- Messages will be rendered here dynamically -->
+      </div>
+
+      <!-- Live Speaking Audio Feedback -->
+      <div class="coach-audio-indicator" id="coachAudioIndicator" style="display:none;">
+        <div class="sound-wave">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <span id="coachAudioStatusText">Kokoro AI đang phát âm...</span>
+        <button id="stopCoachAudioBtn" class="btn-pill btn-mini-stop">Dừng đọc</button>
+      </div>
+
+      <!-- Input Controls Footer -->
+      <div class="coach-input-footer">
+        <div class="quick-prompts-bar">
+          <span class="quick-title">Gợi ý:</span>
+          <button class="quick-chip" data-prompt="Hi Coach! Can you ask me the first question for my presentation?">❓ Hỏi câu mở đầu</button>
+          <button class="quick-chip" data-prompt="Please give me feedback on my Hook and Preview statements.">🔍 Nhận xét Mở bài</button>
+          <button class="quick-chip" data-prompt="What are high-scoring vocabulary phrases for this topic?">📚 Từ vựng ghi điểm</button>
+        </div>
+
+        <div class="coach-input-row">
+          <button id="coachMicBtn" class="btn-icon btn-mic" title="Bấm để nói tiếng Anh qua Microphone">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+          </button>
+
+          <textarea id="coachInputText" class="coach-textarea" rows="1" placeholder="Nhập câu trả lời bằng tiếng Anh hoặc bấm Mic để nói..."></textarea>
+
+          <button id="coachSendBtn" class="btn-pill btn-primary btn-send">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+            <span>Gửi</span>
+          </button>
+        </div>
+        <div class="coach-mic-tip" id="coachMicTip">💡 Bấm nút Micro để nói trực tiếp, AI sẽ lắng nghe và tự động chuyển giọng nói thành văn bản.</div>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast Notification -->
   <div class="toast-container">
