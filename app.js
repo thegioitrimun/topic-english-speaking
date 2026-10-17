@@ -86,6 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Word Highlighting & Phonetic Popover DOM Elements
   const toggleHighlightPenBtn = document.getElementById('toggleHighlightPenBtn');
+  const penModeIndicator = document.getElementById('penModeIndicator');
+  const closePenModeBtn = document.getElementById('closePenModeBtn');
   const openWordBankBtn = document.getElementById('openWordBankBtn');
   const headerWordCount = document.getElementById('headerWordCount');
   const phoneticPopover = document.getElementById('phoneticPopover');
@@ -105,6 +107,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const wordBankList = document.getElementById('wordBankList');
   const clearAllWordsBtn = document.getElementById('clearAllWordsBtn');
   const wordBankSub = document.getElementById('wordBankSub');
+
+  // iPad & Mobile Touch Word Inspector Sheet Elements
+  const touchWordSheet = document.getElementById('touchWordSheet');
+  const touchSheetBackdrop = document.getElementById('touchSheetBackdrop');
+  const touchSheetWord = document.getElementById('touchSheetWord');
+  const touchSheetIpa = document.getElementById('touchSheetIpa');
+  const touchSheetMeaning = document.getElementById('touchSheetMeaning');
+  const touchSheetMeaningBox = document.getElementById('touchSheetMeaningBox');
+  const touchSheetSpeakBtn = document.getElementById('touchSheetSpeakBtn');
+  const touchSheetMarkBtn = document.getElementById('touchSheetMarkBtn');
+  const touchMarkIcon = document.getElementById('touchMarkIcon');
+  const touchMarkText = document.getElementById('touchMarkText');
+  const closeTouchSheetBtn = document.getElementById('closeTouchSheetBtn');
 
   // Initialize Speech Synthesis
   const synth = window.speechSynthesis;
@@ -1437,34 +1452,26 @@ CRITICAL RULES:
 
   function renderTextWithHighlights(text, wrapParagraphs = true) {
     if (!text) return '';
-    const wordsList = Array.from(state.highlightedWords).filter(w => w && w.trim().length > 0);
-    wordsList.sort((a, b) => b.length - a.length);
+    const highlightedSet = state.highlightedWords;
 
-    let regex = null;
-    if (wordsList.length > 0) {
-      const pattern = '\\b(' + wordsList.map(escapeRegExp).join('|') + ')\\b';
-      regex = new RegExp(pattern, 'gi');
+    // Tokenize paragraph: wrap each individual word in an accessible .speech-word target
+    function tokenizeParagraph(paraText) {
+      let safe = paraText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return safe.replace(/\b([a-zA-Z][a-zA-Z0-9'-]*)\b/g, (match) => {
+        const clean = match.toLowerCase().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
+        if (!clean || clean.length < 2) return match;
+        const isMarked = highlightedSet && highlightedSet.has(clean);
+        return `<span class="speech-word${isMarked ? ' word-highlighted' : ''}" data-word="${clean}">${match}</span>`;
+      });
     }
 
     if (!wrapParagraphs) {
-      let safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      if (regex) {
-        safe = safe.replace(regex, (match) => {
-          return `<mark class="word-highlighted" data-word="${match.toLowerCase()}">${match}</mark>`;
-        });
-      }
-      return safe;
+      return tokenizeParagraph(text);
     }
 
     const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
     return paragraphs.map(p => {
-      let safePara = p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      if (regex) {
-        safePara = safePara.replace(regex, (match) => {
-          return `<mark class="word-highlighted" data-word="${match.toLowerCase()}">${match}</mark>`;
-        });
-      }
-      return `<p class="speech-p">${safePara.replace(/\n/g, '<br>')}</p>`;
+      return `<p class="speech-p">${tokenizeParagraph(p).replace(/\n/g, '<br>')}</p>`;
     }).join('');
   }
 
@@ -1549,6 +1556,13 @@ CRITICAL RULES:
       const speechEl = item.querySelector('.speech-content');
       if (speechEl) speechEl.innerHTML = renderTextWithHighlights(topic.fullSpeech, true);
 
+      // Refresh all speech-word spans inside outline/other panels
+      item.querySelectorAll('.speech-word').forEach(span => {
+        const word = span.getAttribute('data-word');
+        const isMarked = state.highlightedWords.has(word);
+        span.classList.toggle('word-highlighted', isMarked);
+      });
+
       // Refresh vocab card stars
       item.querySelectorAll('.btn-vocab-star').forEach(star => {
         const word = star.getAttribute('data-word');
@@ -1561,6 +1575,59 @@ CRITICAL RULES:
 
     if (wordBankOverlay && wordBankOverlay.style.display !== 'none') {
       renderWordBankList(wordBankSearch ? wordBankSearch.value : '');
+    }
+
+    if (currentInspectWord && touchWordSheet && touchWordSheet.style.display !== 'none') {
+      updateTouchSheetState(currentInspectWord);
+    }
+  }
+
+  // iPad & Mobile Touch Word Inspector Logic
+  let currentInspectWord = null;
+
+  function showTouchWordSheet(rawWord) {
+    const info = getWordInfo(rawWord);
+    if (!info) return;
+
+    currentInspectWord = info.word;
+
+    if (touchSheetWord) touchSheetWord.textContent = info.word;
+    if (touchSheetIpa) touchSheetIpa.textContent = info.ipa || `/${info.word}/`;
+
+    if (touchSheetMeaningBox && touchSheetMeaning) {
+      if (info.meaning) {
+        touchSheetMeaning.textContent = info.meaning;
+        touchSheetMeaningBox.style.display = 'flex';
+      } else {
+        touchSheetMeaningBox.style.display = 'none';
+      }
+    }
+
+    updateTouchSheetState(info.word);
+
+    if (touchWordSheet) {
+      touchWordSheet.style.display = 'flex';
+      void touchWordSheet.offsetHeight; // trigger reflow for smooth transition
+      touchWordSheet.classList.add('active');
+    }
+  }
+
+  function updateTouchSheetState(word) {
+    if (!touchSheetMarkBtn) return;
+    const isMarked = state.highlightedWords.has(word);
+    touchSheetMarkBtn.classList.toggle('marked', isMarked);
+    if (touchMarkIcon) touchMarkIcon.textContent = isMarked ? '✓' : '🖍️';
+    if (touchMarkText) touchMarkText.textContent = isMarked ? 'Đã thuộc (Bỏ lưu)' : 'Đánh dấu chưa nhớ';
+  }
+
+  function hideTouchWordSheet() {
+    if (touchWordSheet) {
+      touchWordSheet.classList.remove('active');
+      setTimeout(() => {
+        if (!touchWordSheet.classList.contains('active')) {
+          touchWordSheet.style.display = 'none';
+        }
+      }, 280);
     }
   }
 
@@ -1702,21 +1769,39 @@ CRITICAL RULES:
   function initHighlightSystem() {
     updateWordBankCount();
 
-    // 1. Toggle Pen Mode
+    // 1. Pen Mode Activation & Indicator Handling
+    function setPenMode(active) {
+      state.penMode = active;
+      document.body.classList.toggle('pen-mode-active', state.penMode);
+      if (toggleHighlightPenBtn) toggleHighlightPenBtn.classList.toggle('active', state.penMode);
+      if (penModeIndicator) {
+        penModeIndicator.style.display = state.penMode ? 'block' : 'none';
+      }
+      if (state.penMode) {
+        hideTouchWordSheet();
+        hidePhoneticPopover(0);
+        showToast('🖍️ Chế độ Bút Dạ Quang: BẬT. Chạm vào bất kỳ từ nào để đánh dấu vàng!');
+      } else {
+        showToast('Đã tắt Chế độ Bút Dạ Quang.');
+      }
+    }
+
     if (toggleHighlightPenBtn) {
       toggleHighlightPenBtn.addEventListener('click', () => {
-        state.penMode = !state.penMode;
-        document.body.classList.toggle('pen-mode-active', state.penMode);
-        toggleHighlightPenBtn.classList.toggle('active', state.penMode);
-        showToast(state.penMode
-          ? '🖍️ Chế độ Bút Dạ Quang: BẬT. Hãy click vào bất kỳ từ nào bạn muốn đánh dấu!'
-          : 'Đã tắt Chế độ Bút Dạ Quang.'
-        );
+        setPenMode(!state.penMode);
       });
     }
 
-    // 2. Hover over highlighted words (Phonetic Tooltip)
+    if (closePenModeBtn) {
+      closePenModeBtn.addEventListener('click', () => {
+        setPenMode(false);
+      });
+    }
+
+    // 2. Desktop Mouse Hover over highlighted words
     document.addEventListener('mouseover', (e) => {
+      // Don't show tooltip on touch devices
+      if (window.matchMedia('(pointer: coarse)').matches) return;
       const mark = e.target.closest('.word-highlighted');
       if (mark) {
         const word = mark.getAttribute('data-word') || mark.textContent;
@@ -1734,7 +1819,7 @@ CRITICAL RULES:
       }
     });
 
-    // 3. Popover Actions
+    // 3. Desktop Popover Actions
     if (popoverSpeakBtn) {
       popoverSpeakBtn.addEventListener('click', () => {
         if (currentHoverWord) speakSingleWord(currentHoverWord);
@@ -1750,8 +1835,75 @@ CRITICAL RULES:
       });
     }
 
-    // 4. Text Selection Action Popover
+    // 4. iPad & Mobile Touch Word Sheet Actions
+    if (touchSheetSpeakBtn) {
+      touchSheetSpeakBtn.addEventListener('click', () => {
+        if (currentInspectWord) speakSingleWord(currentInspectWord);
+      });
+    }
+
+    if (touchSheetMarkBtn) {
+      touchSheetMarkBtn.addEventListener('click', () => {
+        if (currentInspectWord) {
+          toggleWordHighlight(currentInspectWord);
+          updateTouchSheetState(currentInspectWord);
+        }
+      });
+    }
+
+    if (closeTouchSheetBtn) {
+      closeTouchSheetBtn.addEventListener('click', hideTouchWordSheet);
+    }
+
+    if (touchSheetBackdrop) {
+      touchSheetBackdrop.addEventListener('click', hideTouchWordSheet);
+    }
+
+    // 5. Unified Word Tap & Click Engine (iPad / Touch + Desktop)
+    document.addEventListener('click', (e) => {
+      // Check if user tapped an English word
+      const wordEl = e.target.closest('.speech-word');
+      if (wordEl) {
+        const word = wordEl.getAttribute('data-word');
+        if (!word) return;
+
+        // Visual feedback pulse
+        wordEl.classList.remove('word-tap-pulse');
+        void wordEl.offsetWidth; // trigger reflow
+        wordEl.classList.add('word-tap-pulse');
+
+        // If Pen mode is on -> 1-touch highlight!
+        if (state.penMode) {
+          toggleWordHighlight(word);
+          return;
+        }
+
+        // Normal mode -> Show Word Inspector
+        const isTouchOrTablet = window.matchMedia('(pointer: coarse)').matches ||
+                                window.innerWidth <= 1024 ||
+                                ('ontouchstart' in window);
+
+        if (isTouchOrTablet) {
+          showTouchWordSheet(word);
+        } else {
+          showPhoneticPopover(wordEl, word);
+        }
+        return;
+      }
+
+      // If clicked outside touch sheet, close it smoothly
+      if (touchWordSheet && touchWordSheet.classList.contains('active')) {
+        if (!e.target.closest('.touch-sheet-panel') && !e.target.closest('.speech-word')) {
+          hideTouchWordSheet();
+        }
+      }
+    });
+
+    // 6. Text Selection Action Popover (for manual drag selection)
     document.addEventListener('mouseup', (e) => {
+      // Don't trigger selection popover if tapping a word directly
+      if (e.target.closest('.speech-word')) return;
+
       const sel = window.getSelection();
       const selText = sel ? sel.toString().trim() : '';
       if (!selText || selText.length < 2 || selText.length > 50) {
@@ -1811,40 +1963,6 @@ CRITICAL RULES:
         }
       });
     }
-
-    // 5. Pen Mode Direct Click on words
-    document.addEventListener('click', (e) => {
-      if (state.penMode) {
-        const mark = e.target.closest('.word-highlighted');
-        if (mark) {
-          const word = mark.getAttribute('data-word');
-          toggleWordHighlight(word);
-          hidePhoneticPopover(0);
-          return;
-        }
-
-        const container = e.target.closest('.speech-content') || e.target.closest('.outline-en');
-        if (container) {
-          const sel = window.getSelection();
-          let clickedWord = sel ? sel.toString().trim() : '';
-          if (!clickedWord) {
-            const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null;
-            if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
-              const text = range.startContainer.textContent;
-              const offset = range.startOffset;
-              const left = text.slice(0, offset).search(/[a-zA-Z0-9_-]+$/);
-              const rightMatch = text.slice(offset).match(/^[a-zA-Z0-9_-]+/);
-              if (left !== -1 && rightMatch) {
-                clickedWord = text.slice(left, offset + rightMatch[0].length);
-              }
-            }
-          }
-          if (clickedWord && clickedWord.length >= 2) {
-            toggleWordHighlight(clickedWord);
-          }
-        }
-      }
-    });
 
     // 6. Word Bank Modal
     if (openWordBankBtn) {
