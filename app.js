@@ -453,9 +453,14 @@ document.addEventListener('DOMContentLoaded', () => {
       panelsContainer.appendChild(vocabPanel);
       panelsContainer.appendChild(tipsPanel);
 
+      // Sticky Header Container (Audio Toolbar & Tabs Navigation)
+      const stickyHeader = document.createElement('div');
+      stickyHeader.className = 'topic-sticky-header';
+      stickyHeader.appendChild(audioToolbar);
+      stickyHeader.appendChild(tabsNav);
+
       // Assemble details card
-      body.appendChild(audioToolbar);
-      body.appendChild(tabsNav);
+      body.appendChild(stickyHeader);
       body.appendChild(panelsContainer);
 
       details.appendChild(summary);

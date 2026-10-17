@@ -840,25 +840,37 @@ button, input, select {
   }
 }
 
-/* Audio Player Bar - Sticky Top Toolbar */
-.audio-action-bar {
+/* ==========================================================================
+   Topic Sticky Header (Audio Action Bar + Tabs Navigation)
+   ========================================================================== */
+
+.topic-sticky-header {
   position: sticky;
   top: calc(var(--header-height, 4.25rem) + var(--pen-offset, 0px));
   z-index: 30;
+  background-color: var(--bg-secondary);
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
+  padding: 0.75rem 1.5rem 0;
+  transition: top var(--transition-fast), background-color var(--transition-fast);
+}
+
+/* Audio Player Bar inside Sticky Header */
+.audio-action-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.8rem 1rem;
-  margin: 0.75rem 0 1.15rem;
+  padding: 0.7rem 0.95rem;
+  margin: 0 0 0.65rem;
   background-color: var(--bg-audio-bar, var(--bg-tertiary));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
   flex-wrap: wrap;
-  transition: top var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  transition: box-shadow var(--transition-fast), background-color var(--transition-fast);
 }
 
 [data-theme="dark"] .audio-action-bar {
@@ -915,19 +927,24 @@ button, input, select {
   gap: 0.5rem;
 }
 
-/* Tabs inside Accordion */
+/* Tabs inside Sticky Header */
 .tabs-navigation {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   border-bottom: 2px solid var(--border-color);
-  margin-bottom: 1.25rem;
+  margin-bottom: 0;
   overflow-x: auto;
   scrollbar-width: none;
+  background-color: var(--bg-secondary);
 }
 
 .tabs-navigation::-webkit-scrollbar {
   display: none;
+}
+
+.tab-panels-wrapper {
+  padding-top: 1.15rem;
 }
 
 .tab-btn {
@@ -1370,6 +1387,14 @@ button, input, select {
 
   .topic-body {
     padding: 0 1rem 1.25rem;
+  }
+
+  .topic-sticky-header {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 0.5rem;
   }
 
   .audio-action-bar {
@@ -3120,7 +3145,7 @@ body.pen-mode-active .speech-word:active {
 
 /* Print Friendly Styles */
 @media print {
-  .site-header, .controls-wrapper, .audio-action-bar, .timer-modal, .btn-icon, .btn-pill, .site-footer, .ai-hub-card, .ai-coach-overlay, .phonetic-popover, .selection-action-popover, .word-bank-overlay {
+  .site-header, .controls-wrapper, .topic-sticky-header, .audio-action-bar, .timer-modal, .btn-icon, .btn-pill, .site-footer, .ai-hub-card, .ai-coach-overlay, .phonetic-popover, .selection-action-popover, .word-bank-overlay {
     display: none !important;
   }
 
