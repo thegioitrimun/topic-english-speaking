@@ -33,6 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
       chatMessages: [],
       isGenerating: false,
     },
+    highlightedWords: new Set(JSON.parse(localStorage.getItem('tvu_highlighted_words') || '["plant-based", "environment", "sustainable"]')),
+    penMode: false,
+    currentSelectedWord: '',
   };
 
   // DOM Elements
@@ -80,6 +83,28 @@ document.addEventListener('DOMContentLoaded', () => {
   const coachAudioStatusText = document.getElementById('coachAudioStatusText');
   const stopCoachAudioBtn = document.getElementById('stopCoachAudioBtn');
   const coachModelBadge = document.getElementById('coachModelBadge');
+
+  // Word Highlighting & Phonetic Popover DOM Elements
+  const toggleHighlightPenBtn = document.getElementById('toggleHighlightPenBtn');
+  const openWordBankBtn = document.getElementById('openWordBankBtn');
+  const headerWordCount = document.getElementById('headerWordCount');
+  const phoneticPopover = document.getElementById('phoneticPopover');
+  const popoverWord = document.getElementById('popoverWord');
+  const popoverIpa = document.getElementById('popoverIpa');
+  const popoverMeaning = document.getElementById('popoverMeaning');
+  const popoverMeaningRow = document.getElementById('popoverMeaningRow');
+  const popoverSpeakBtn = document.getElementById('popoverSpeakBtn');
+  const popoverSpeakLabel = document.getElementById('popoverSpeakLabel');
+  const popoverUnmarkBtn = document.getElementById('popoverUnmarkBtn');
+  const selectionActionPopover = document.getElementById('selectionActionPopover');
+  const btnMarkSelectedWord = document.getElementById('btnMarkSelectedWord');
+  const btnSpeakSelectedWord = document.getElementById('btnSpeakSelectedWord');
+  const wordBankOverlay = document.getElementById('wordBankOverlay');
+  const closeWordBankBtn = document.getElementById('closeWordBankBtn');
+  const wordBankSearch = document.getElementById('wordBankSearch');
+  const wordBankList = document.getElementById('wordBankList');
+  const clearAllWordsBtn = document.getElementById('clearAllWordsBtn');
+  const wordBankSub = document.getElementById('wordBankSub');
 
   // Initialize Speech Synthesis
   const synth = window.speechSynthesis;
@@ -273,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const speechPanel = document.createElement('div');
       speechPanel.className = 'tab-panel panel-speech active';
       speechPanel.innerHTML = `
-        <div class="speech-content" id="speech-text-${topic.id}">${topic.fullSpeech}</div>
+        <div class="speech-content" id="speech-text-${topic.id}">${renderTextWithHighlights(topic.fullSpeech, true)}</div>
       `;
 
       // 2. Speaking Outline Panel
@@ -290,22 +315,22 @@ document.addEventListener('DOMContentLoaded', () => {
             <ul class="outline-list">
               <li class="outline-item">
                 <span class="outline-label">1. Capture Audience's Attention (Hook - Thu hút người nghe):</span>
-                <span class="outline-en">${topic.outline.hook}</span>
+                <span class="outline-en">${renderTextWithHighlights(topic.outline.hook, false)}</span>
                 <span class="outline-vi">${topic.outline.hookVi}</span>
               </li>
               <li class="outline-item">
                 <span class="outline-label">2. State the Purpose (Nêu mục tiêu bài nói):</span>
-                <span class="outline-en">${topic.outline.purpose}</span>
+                <span class="outline-en">${renderTextWithHighlights(topic.outline.purpose, false)}</span>
                 <span class="outline-vi">${topic.outline.purposeVi}</span>
               </li>
               <li class="outline-item">
                 <span class="outline-label">3. Build Credibility (Tạo uy tín cá nhân):</span>
-                <span class="outline-en">${topic.outline.credibility}</span>
+                <span class="outline-en">${renderTextWithHighlights(topic.outline.credibility, false)}</span>
                 <span class="outline-vi">${topic.outline.credibilityVi}</span>
               </li>
               <li class="outline-item">
                 <span class="outline-label">4. Preview Main Points (Khái quát các điểm chính):</span>
-                <span class="outline-en">${topic.outline.preview}</span>
+                <span class="outline-en">${renderTextWithHighlights(topic.outline.preview, false)}</span>
                 <span class="outline-vi">${topic.outline.previewVi}</span>
               </li>
             </ul>
@@ -320,19 +345,19 @@ document.addEventListener('DOMContentLoaded', () => {
             <ul class="outline-list">
               <li class="outline-item">
                 <span class="outline-label">${topic.outline.bodyPoint1.heading}</span>
-                <span class="outline-en"><strong>Phân tích:</strong> ${topic.outline.bodyPoint1.detail}</span>
-                <span class="outline-en"><strong>Dẫn chứng/Ví dụ:</strong> ${topic.outline.bodyPoint1.example}</span>
+                <span class="outline-en"><strong>Phân tích:</strong> ${renderTextWithHighlights(topic.outline.bodyPoint1.detail, false)}</span>
+                <span class="outline-en"><strong>Dẫn chứng/Ví dụ:</strong> ${renderTextWithHighlights(topic.outline.bodyPoint1.example, false)}</span>
               </li>
               <li class="outline-item">
                 <span class="outline-label">${topic.outline.bodyPoint2.heading}</span>
-                <span class="outline-en"><strong>Phân tích:</strong> ${topic.outline.bodyPoint2.detail}</span>
-                <span class="outline-en"><strong>Dẫn chứng/Ví dụ:</strong> ${topic.outline.bodyPoint2.example}</span>
+                <span class="outline-en"><strong>Phân tích:</strong> ${renderTextWithHighlights(topic.outline.bodyPoint2.detail, false)}</span>
+                <span class="outline-en"><strong>Dẫn chứng/Ví dụ:</strong> ${renderTextWithHighlights(topic.outline.bodyPoint2.example, false)}</span>
               </li>
               ${topic.outline.bodyPoint3 ? `
               <li class="outline-item">
                 <span class="outline-label">${topic.outline.bodyPoint3.heading}</span>
-                <span class="outline-en"><strong>Phân tích:</strong> ${topic.outline.bodyPoint3.detail}</span>
-                <span class="outline-en"><strong>Dẫn chứng/Ví dụ:</strong> ${topic.outline.bodyPoint3.example}</span>
+                <span class="outline-en"><strong>Phân tích:</strong> ${renderTextWithHighlights(topic.outline.bodyPoint3.detail, false)}</span>
+                <span class="outline-en"><strong>Dẫn chứng/Ví dụ:</strong> ${renderTextWithHighlights(topic.outline.bodyPoint3.example, false)}</span>
               </li>` : ''}
             </ul>
           </div>
@@ -346,17 +371,17 @@ document.addEventListener('DOMContentLoaded', () => {
             <ul class="outline-list">
               <li class="outline-item">
                 <span class="outline-label">1. Summarize Main Points (Tóm tắt điểm chính):</span>
-                <span class="outline-en">${topic.outline.conclusionSummary}</span>
+                <span class="outline-en">${renderTextWithHighlights(topic.outline.conclusionSummary, false)}</span>
                 <span class="outline-vi">${topic.outline.conclusionSummaryVi}</span>
               </li>
               <li class="outline-item">
                 <span class="outline-label">2. Reinforce the Purpose (Khẳng định lại ý nghĩa bài nói):</span>
-                <span class="outline-en">${topic.outline.conclusionReinforce}</span>
+                <span class="outline-en">${renderTextWithHighlights(topic.outline.conclusionReinforce, false)}</span>
                 <span class="outline-vi">${topic.outline.conclusionReinforceVi}</span>
               </li>
               <li class="outline-item">
                 <span class="outline-label">3. Provide Closure (Kết thúc ấn tượng & Lời kêu gọi):</span>
-                <span class="outline-en">${topic.outline.conclusionClosure}</span>
+                <span class="outline-en">${renderTextWithHighlights(topic.outline.conclusionClosure, false)}</span>
                 <span class="outline-vi">${topic.outline.conclusionClosureVi}</span>
               </li>
             </ul>
@@ -374,13 +399,19 @@ document.addEventListener('DOMContentLoaded', () => {
       // 4. Vocabulary Panel
       const vocabPanel = document.createElement('div');
       vocabPanel.className = 'tab-panel panel-vocab';
-      let vocabCardsHtml = topic.vocabulary.map(v => `
-        <div class="vocab-card">
+      let vocabCardsHtml = topic.vocabulary.map(v => {
+        const isMarked = state.highlightedWords && state.highlightedWords.has(v.word.toLowerCase());
+        return `
+        <div class="vocab-card" data-word="${v.word.toLowerCase()}">
+          <button class="btn-vocab-star ${isMarked ? 'marked' : ''}" data-word="${v.word.toLowerCase()}" title="${isMarked ? 'Đã đánh dấu chưa nhớ (Bấm để bỏ)' : 'Đánh dấu từ này là chưa nhớ'}">
+            ${isMarked ? '⭐' : '☆'}
+          </button>
           <div class="vocab-word">${v.word}</div>
           <div class="vocab-phonetics">${v.phonetics}</div>
           <div class="vocab-meaning">${v.meaning}</div>
         </div>
-      `).join('');
+      `;
+      }).join('');
       vocabPanel.innerHTML = `<div class="vocab-grid">${vocabCardsHtml}</div>`;
 
       // 5. Delivery Tips Panel
@@ -443,6 +474,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const activePanel = parentCard.querySelector(`.panel-${targetTab}`);
         if (activePanel) activePanel.classList.add('active');
+      });
+    });
+
+    // Star button in vocabulary cards
+    document.querySelectorAll('.btn-vocab-star').forEach(starBtn => {
+      starBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const word = starBtn.getAttribute('data-word');
+        if (word) {
+          toggleWordHighlight(word);
+        }
       });
     });
 
@@ -1386,6 +1428,472 @@ CRITICAL RULES:
     }
   }
 
+  // =========================================================================
+  // Word Highlighting & Phonetic Popover Engine
+  // =========================================================================
+  function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function renderTextWithHighlights(text, wrapParagraphs = true) {
+    if (!text) return '';
+    const wordsList = Array.from(state.highlightedWords).filter(w => w && w.trim().length > 0);
+    wordsList.sort((a, b) => b.length - a.length);
+
+    let regex = null;
+    if (wordsList.length > 0) {
+      const pattern = '\\b(' + wordsList.map(escapeRegExp).join('|') + ')\\b';
+      regex = new RegExp(pattern, 'gi');
+    }
+
+    if (!wrapParagraphs) {
+      let safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      if (regex) {
+        safe = safe.replace(regex, (match) => {
+          return `<mark class="word-highlighted" data-word="${match.toLowerCase()}">${match}</mark>`;
+        });
+      }
+      return safe;
+    }
+
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+    return paragraphs.map(p => {
+      let safePara = p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      if (regex) {
+        safePara = safePara.replace(regex, (match) => {
+          return `<mark class="word-highlighted" data-word="${match.toLowerCase()}">${match}</mark>`;
+        });
+      }
+      return `<p class="speech-p">${safePara.replace(/\n/g, '<br>')}</p>`;
+    }).join('');
+  }
+
+  function getWordInfo(rawWord) {
+    if (!rawWord) return null;
+    const clean = rawWord.trim().toLowerCase().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
+    if (!clean) return null;
+
+    if (typeof PHONETICS_DATA !== 'undefined' && PHONETICS_DATA) {
+      if (PHONETICS_DATA[clean]) {
+        return {
+          word: clean,
+          ipa: PHONETICS_DATA[clean].ipa || '',
+          meaning: PHONETICS_DATA[clean].meaning || ''
+        };
+      }
+      // Try root word / singular heuristics
+      if (clean.endsWith('ies') && PHONETICS_DATA[clean.slice(0, -3) + 'y']) {
+        const base = clean.slice(0, -3) + 'y';
+        return { word: clean, ipa: PHONETICS_DATA[base].ipa, meaning: PHONETICS_DATA[base].meaning || '' };
+      }
+      if (clean.endsWith('s') && PHONETICS_DATA[clean.slice(0, -1)]) {
+        const base = clean.slice(0, -1);
+        return { word: clean, ipa: PHONETICS_DATA[base].ipa, meaning: PHONETICS_DATA[base].meaning || '' };
+      }
+      if (clean.endsWith('ed') && PHONETICS_DATA[clean.slice(0, -2)]) {
+        const base = clean.slice(0, -2);
+        return { word: clean, ipa: PHONETICS_DATA[base].ipa, meaning: PHONETICS_DATA[base].meaning || '' };
+      }
+      if (clean.endsWith('ing') && PHONETICS_DATA[clean.slice(0, -3)]) {
+        const base = clean.slice(0, -3);
+        return { word: clean, ipa: PHONETICS_DATA[base].ipa, meaning: PHONETICS_DATA[base].meaning || '' };
+      }
+    }
+
+    return { word: clean, ipa: `/${clean}/`, meaning: '' };
+  }
+
+  function saveHighlightedWords() {
+    localStorage.setItem('tvu_highlighted_words', JSON.stringify(Array.from(state.highlightedWords)));
+    updateWordBankCount();
+    refreshHighlightsInDom();
+  }
+
+  function updateWordBankCount() {
+    const count = state.highlightedWords.size;
+    if (headerWordCount) {
+      headerWordCount.textContent = count;
+      if (count > 0) {
+        headerWordCount.classList.add('has-items');
+      } else {
+        headerWordCount.classList.remove('has-items');
+      }
+    }
+    if (wordBankSub) {
+      wordBankSub.textContent = `Bạn đang có ${count} từ vựng cần ôn luyện`;
+    }
+  }
+
+  function toggleWordHighlight(rawWord, forceState) {
+    if (!rawWord) return;
+    const clean = rawWord.trim().toLowerCase().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
+    if (!clean) return;
+
+    if (state.highlightedWords.has(clean) && forceState !== true) {
+      state.highlightedWords.delete(clean);
+      showToast(`Đã bỏ đánh dấu: "${clean}"`);
+    } else {
+      state.highlightedWords.add(clean);
+      showToast(`Đã đánh dấu từ: "${clean}"`);
+    }
+    saveHighlightedWords();
+  }
+
+  function refreshHighlightsInDom() {
+    // Refresh open topics
+    document.querySelectorAll('.topic-item[open]').forEach(item => {
+      const id = parseInt(item.id.replace('topic-', ''), 10);
+      const topic = TOPICS_DATA.find(t => t.id === id);
+      if (!topic) return;
+
+      const speechEl = item.querySelector('.speech-content');
+      if (speechEl) speechEl.innerHTML = renderTextWithHighlights(topic.fullSpeech, true);
+
+      // Refresh vocab card stars
+      item.querySelectorAll('.btn-vocab-star').forEach(star => {
+        const word = star.getAttribute('data-word');
+        const isMarked = state.highlightedWords.has(word);
+        star.textContent = isMarked ? '⭐' : '☆';
+        star.classList.toggle('marked', isMarked);
+        star.title = isMarked ? 'Đã đánh dấu chưa nhớ (Bấm để bỏ)' : 'Đánh dấu từ này là chưa nhớ';
+      });
+    });
+
+    if (wordBankOverlay && wordBankOverlay.style.display !== 'none') {
+      renderWordBankList(wordBankSearch ? wordBankSearch.value : '');
+    }
+  }
+
+  async function speakSingleWord(word) {
+    if (!word) return;
+    const clean = word.trim().toLowerCase();
+
+    if (state.ai.kokoroAvailable) {
+      try {
+        const audioUrl = await synthesizeKokoroAudio(clean, state.ai.selectedVoice, 0.95);
+        const audio = new Audio(audioUrl);
+        state.ai.currentAudio = audio;
+        await audio.play();
+        return;
+      } catch (err) {
+        console.warn('Kokoro single word speech failed, using fallback:', err);
+      }
+    }
+
+    if (synth) {
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(clean);
+      u.lang = 'en-US';
+      u.rate = 0.9;
+      if (englishVoice) u.voice = englishVoice;
+      synth.speak(u);
+    }
+  }
+
+  let popoverTimer = null;
+  let currentHoverWord = null;
+
+  function showPhoneticPopover(targetElem, rawWord) {
+    clearTimeout(popoverTimer);
+    const info = getWordInfo(rawWord);
+    if (!info) return;
+
+    currentHoverWord = info.word;
+
+    if (popoverWord) popoverWord.textContent = info.word;
+    if (popoverIpa) popoverIpa.textContent = info.ipa || `/${info.word}/`;
+
+    if (popoverMeaningRow && popoverMeaning) {
+      if (info.meaning) {
+        popoverMeaning.textContent = info.meaning;
+        popoverMeaningRow.style.display = 'flex';
+      } else {
+        popoverMeaningRow.style.display = 'none';
+      }
+    }
+
+    if (phoneticPopover) {
+      phoneticPopover.style.display = 'block';
+
+      const rect = targetElem.getBoundingClientRect();
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const popoverRect = phoneticPopover.getBoundingClientRect();
+
+      let top = rect.top + scrollTop - popoverRect.height - 10;
+      let left = rect.left + scrollLeft + (rect.width / 2) - (popoverRect.width / 2);
+
+      // Flip below if near top boundary
+      if (rect.top - popoverRect.height < 15) {
+        top = rect.bottom + scrollTop + 10;
+      }
+
+      // Horizontal boundaries
+      if (left < 10) left = 10;
+      if (left + popoverRect.width > window.innerWidth - 10) {
+        left = window.innerWidth - popoverRect.width - 10;
+      }
+
+      phoneticPopover.style.top = `${top}px`;
+      phoneticPopover.style.left = `${left}px`;
+    }
+  }
+
+  function hidePhoneticPopover(delay = 180) {
+    clearTimeout(popoverTimer);
+    popoverTimer = setTimeout(() => {
+      if (phoneticPopover) phoneticPopover.style.display = 'none';
+    }, delay);
+  }
+
+  function renderWordBankList(filterQuery = '') {
+    if (!wordBankList) return;
+    const q = filterQuery.toLowerCase().trim();
+    const words = Array.from(state.highlightedWords).filter(w => !q || w.includes(q));
+
+    if (words.length === 0) {
+      wordBankList.innerHTML = `
+        <div class="word-bank-empty">
+          <div class="word-bank-empty-icon">📖</div>
+          <h3>${q ? 'Không tìm thấy từ phù hợp' : 'Chưa có từ nào được đánh dấu'}</h3>
+          <p>${q ? 'Thử tìm với từ khóa khác.' : 'Bật "Bút Dạ Quang" hoặc bôi đen từ trong bài đọc để đánh dấu các từ bạn chưa nhớ!'}</p>
+        </div>
+      `;
+      return;
+    }
+
+    wordBankList.innerHTML = words.map(w => {
+      const info = getWordInfo(w) || { word: w, ipa: '', meaning: '' };
+      return `
+        <div class="word-bank-item">
+          <div class="word-item-info">
+            <div class="word-item-top">
+              <span class="word-item-title">${info.word}</span>
+              ${info.ipa ? `<span class="word-item-ipa">${info.ipa}</span>` : ''}
+            </div>
+            ${info.meaning ? `<div class="word-item-meaning">🇻🇳 ${info.meaning}</div>` : ''}
+          </div>
+          <div class="word-item-actions">
+            <button class="btn-word-speak" data-word="${info.word}" title="Nghe phát âm">
+              🔊 Đọc
+            </button>
+            <button class="btn-word-delete" data-word="${info.word}" title="Bỏ khỏi danh sách (Đã nhớ)">
+              ✓ Đã thuộc
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Attach listeners
+    wordBankList.querySelectorAll('.btn-word-speak').forEach(btn => {
+      btn.addEventListener('click', () => {
+        speakSingleWord(btn.getAttribute('data-word'));
+      });
+    });
+
+    wordBankList.querySelectorAll('.btn-word-delete').forEach(btn => {
+      btn.addEventListener('click', () => {
+        toggleWordHighlight(btn.getAttribute('data-word'), false);
+      });
+    });
+  }
+
+  function initHighlightSystem() {
+    updateWordBankCount();
+
+    // 1. Toggle Pen Mode
+    if (toggleHighlightPenBtn) {
+      toggleHighlightPenBtn.addEventListener('click', () => {
+        state.penMode = !state.penMode;
+        document.body.classList.toggle('pen-mode-active', state.penMode);
+        toggleHighlightPenBtn.classList.toggle('active', state.penMode);
+        showToast(state.penMode
+          ? '🖍️ Chế độ Bút Dạ Quang: BẬT. Hãy click vào bất kỳ từ nào bạn muốn đánh dấu!'
+          : 'Đã tắt Chế độ Bút Dạ Quang.'
+        );
+      });
+    }
+
+    // 2. Hover over highlighted words (Phonetic Tooltip)
+    document.addEventListener('mouseover', (e) => {
+      const mark = e.target.closest('.word-highlighted');
+      if (mark) {
+        const word = mark.getAttribute('data-word') || mark.textContent;
+        showPhoneticPopover(mark, word);
+        return;
+      }
+      if (e.target.closest('#phoneticPopover')) {
+        clearTimeout(popoverTimer);
+      }
+    });
+
+    document.addEventListener('mouseout', (e) => {
+      if (e.target.closest('.word-highlighted') || e.target.closest('#phoneticPopover')) {
+        hidePhoneticPopover(200);
+      }
+    });
+
+    // 3. Popover Actions
+    if (popoverSpeakBtn) {
+      popoverSpeakBtn.addEventListener('click', () => {
+        if (currentHoverWord) speakSingleWord(currentHoverWord);
+      });
+    }
+
+    if (popoverUnmarkBtn) {
+      popoverUnmarkBtn.addEventListener('click', () => {
+        if (currentHoverWord) {
+          toggleWordHighlight(currentHoverWord, false);
+          hidePhoneticPopover(0);
+        }
+      });
+    }
+
+    // 4. Text Selection Action Popover
+    document.addEventListener('mouseup', (e) => {
+      const sel = window.getSelection();
+      const selText = sel ? sel.toString().trim() : '';
+      if (!selText || selText.length < 2 || selText.length > 50) {
+        if (!e.target.closest('#selectionActionPopover')) {
+          if (selectionActionPopover) selectionActionPopover.style.display = 'none';
+        }
+        return;
+      }
+
+      const inSpeech = e.target.closest('.speech-content') || e.target.closest('.outline-en');
+      if (!inSpeech) {
+        if (selectionActionPopover) selectionActionPopover.style.display = 'none';
+        return;
+      }
+
+      try {
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+
+        selectionActionPopover.style.display = 'flex';
+        const popoverRect = selectionActionPopover.getBoundingClientRect();
+
+        let top = rect.top + scrollTop - popoverRect.height - 8;
+        let left = rect.left + scrollLeft + (rect.width / 2) - (popoverRect.width / 2);
+
+        if (rect.top - popoverRect.height < 15) {
+          top = rect.bottom + scrollTop + 8;
+        }
+        if (left < 10) left = 10;
+        if (left + popoverRect.width > window.innerWidth - 10) {
+          left = window.innerWidth - popoverRect.width - 10;
+        }
+
+        selectionActionPopover.style.top = `${top}px`;
+        selectionActionPopover.style.left = `${left}px`;
+        state.currentSelectedWord = selText;
+      } catch (err) {}
+    });
+
+    if (btnMarkSelectedWord) {
+      btnMarkSelectedWord.addEventListener('click', () => {
+        if (state.currentSelectedWord) {
+          toggleWordHighlight(state.currentSelectedWord, true);
+          if (selectionActionPopover) selectionActionPopover.style.display = 'none';
+          window.getSelection()?.removeAllRanges();
+        }
+      });
+    }
+
+    if (btnSpeakSelectedWord) {
+      btnSpeakSelectedWord.addEventListener('click', () => {
+        if (state.currentSelectedWord) {
+          speakSingleWord(state.currentSelectedWord);
+          if (selectionActionPopover) selectionActionPopover.style.display = 'none';
+        }
+      });
+    }
+
+    // 5. Pen Mode Direct Click on words
+    document.addEventListener('click', (e) => {
+      if (state.penMode) {
+        const mark = e.target.closest('.word-highlighted');
+        if (mark) {
+          const word = mark.getAttribute('data-word');
+          toggleWordHighlight(word);
+          hidePhoneticPopover(0);
+          return;
+        }
+
+        const container = e.target.closest('.speech-content') || e.target.closest('.outline-en');
+        if (container) {
+          const sel = window.getSelection();
+          let clickedWord = sel ? sel.toString().trim() : '';
+          if (!clickedWord) {
+            const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null;
+            if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
+              const text = range.startContainer.textContent;
+              const offset = range.startOffset;
+              const left = text.slice(0, offset).search(/[a-zA-Z0-9_-]+$/);
+              const rightMatch = text.slice(offset).match(/^[a-zA-Z0-9_-]+/);
+              if (left !== -1 && rightMatch) {
+                clickedWord = text.slice(left, offset + rightMatch[0].length);
+              }
+            }
+          }
+          if (clickedWord && clickedWord.length >= 2) {
+            toggleWordHighlight(clickedWord);
+          }
+        }
+      }
+    });
+
+    // 6. Word Bank Modal
+    if (openWordBankBtn) {
+      openWordBankBtn.addEventListener('click', () => {
+        if (wordBankOverlay) {
+          wordBankOverlay.style.display = 'flex';
+          document.body.style.overflow = 'hidden';
+          renderWordBankList(wordBankSearch ? wordBankSearch.value : '');
+          if (wordBankSearch) wordBankSearch.focus();
+        }
+      });
+    }
+
+    if (closeWordBankBtn) {
+      closeWordBankBtn.addEventListener('click', () => {
+        if (wordBankOverlay) {
+          wordBankOverlay.style.display = 'none';
+          document.body.style.overflow = '';
+        }
+      });
+    }
+
+    if (wordBankOverlay) {
+      wordBankOverlay.addEventListener('click', (e) => {
+        if (e.target === wordBankOverlay) {
+          wordBankOverlay.style.display = 'none';
+          document.body.style.overflow = '';
+        }
+      });
+    }
+
+    if (wordBankSearch) {
+      wordBankSearch.addEventListener('input', (e) => {
+        renderWordBankList(e.target.value);
+      });
+    }
+
+    if (clearAllWordsBtn) {
+      clearAllWordsBtn.addEventListener('click', () => {
+        if (state.highlightedWords.size === 0) return;
+        if (confirm('Bạn có chắc chắn muốn xóa toàn bộ danh sách từ đã đánh dấu không?')) {
+          state.highlightedWords.clear();
+          saveHighlightedWords();
+          showToast('Đã xóa toàn bộ danh sách từ chưa nhớ.');
+        }
+      });
+    }
+  }
+
   // Deep Link Handling (e.g. #topic-5)
   // =========================================================================
   function handleHashNavigation() {
@@ -1407,6 +1915,7 @@ CRITICAL RULES:
   handleHashNavigation();
   initAiServices();
   initAiCoach();
+  initHighlightSystem();
 
   window.addEventListener('hashchange', handleHashNavigation);
 });

@@ -22,6 +22,19 @@
       </a>
 
       <div class="header-actions">
+        <!-- Highlighter Pen Mode Toggle -->
+        <button id="toggleHighlightPenBtn" class="btn-pill btn-pen-toggle" title="Bật/Tắt chế độ bút dạ quang: Click vào từ bất kỳ để đánh dấu chưa nhớ">
+          <span class="pen-icon">🖍️</span>
+          <span class="pen-text">Bút Dạ Quang</span>
+        </button>
+
+        <!-- Word Bank Drawer Trigger Button -->
+        <button id="openWordBankBtn" class="btn-pill btn-word-bank" title="Sổ tay các từ bạn đã đánh dấu chưa nhớ">
+          <span>📚</span>
+          <span>Từ Chưa Nhớ</span>
+          <span class="word-bank-count" id="headerWordCount">0</span>
+        </button>
+
         <!-- AI Speaking Partner Trigger Button -->
         <button id="openAiCoachBtn" class="btn-pill btn-ai-coach" title="Luyện nói phản xạ với Local LLM (Gemma 3) và Kokoro TTS">
           <span class="ai-sparkle">🎙️</span>
@@ -357,6 +370,76 @@
     </div>
   </div>
 
+  <!-- Floating Phonetic Tooltip / Popover on Hover -->
+  <div id="phoneticPopover" class="phonetic-popover" style="display:none;" role="tooltip">
+    <div class="popover-arrow"></div>
+    <div class="popover-body">
+      <div class="popover-top-row">
+        <span class="popover-word" id="popoverWord">word</span>
+        <button class="popover-mini-speak-btn" id="popoverSpeakBtn" title="Nghe phát âm từ này">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span id="popoverSpeakLabel">Đọc</span>
+        </button>
+      </div>
+      <div class="popover-ipa-row">
+        <span class="ipa-badge">IPA</span>
+        <span class="popover-ipa" id="popoverIpa">/ˈwɜːd/</span>
+      </div>
+      <div class="popover-meaning-row" id="popoverMeaningRow" style="display:none;">
+        <span class="meaning-icon">🇻🇳</span>
+        <span class="popover-meaning" id="popoverMeaning">Nghĩa tiếng Việt</span>
+      </div>
+      <div class="popover-actions-row">
+        <button class="btn-popover-unmark" id="popoverUnmarkBtn">
+          ✓ Đã nhớ (Bỏ đánh dấu)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Selection Quick Action Popover (when highlighting text) -->
+  <div id="selectionActionPopover" class="selection-action-popover" style="display:none;">
+    <button id="btnMarkSelectedWord" class="btn-sel-action btn-sel-mark">
+      <span>🖍️ Đánh dấu chưa nhớ</span>
+    </button>
+    <button id="btnSpeakSelectedWord" class="btn-sel-action btn-sel-speak">
+      <span>🔊 Nghe</span>
+    </button>
+  </div>
+
+  <!-- Word Bank / Review Drawer Modal -->
+  <div id="wordBankOverlay" class="word-bank-overlay" style="display:none;">
+    <div class="word-bank-modal" role="dialog" aria-modal="true" aria-labelledby="wordBankTitle">
+      <div class="word-bank-header">
+        <div class="word-bank-title-group">
+          <span class="word-bank-icon">📚</span>
+          <div>
+            <h2 id="wordBankTitle" class="word-bank-heading">Sổ Tay Từ Vựng Chưa Nhớ</h2>
+            <div class="word-bank-sub" id="wordBankSub">Bạn đang có 0 từ cần ôn luyện</div>
+          </div>
+        </div>
+        <button id="closeWordBankBtn" class="btn-icon" aria-label="Đóng sổ tay">✕</button>
+      </div>
+
+      <div class="word-bank-toolbar">
+        <input type="text" id="wordBankSearch" class="word-bank-search" placeholder="Tìm kiếm trong danh sách từ chưa nhớ...">
+        <button id="clearAllWordsBtn" class="btn-pill btn-clear-words" title="Xóa toàn bộ từ đã đánh dấu">
+          🗑️ Xóa tất cả
+        </button>
+      </div>
+
+      <div class="word-bank-list" id="wordBankList">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="word-bank-footer">
+        <div class="word-bank-tip">💡 Di chuột vào bất kỳ từ nào được highlight màu vàng trong bài đọc để xem phiên âm IPA và nghe phát âm.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div class="toast-container">
     <div id="toast" class="toast" role="status">
@@ -385,6 +468,7 @@
 
   <!-- Scripts -->
   <script src="topics-data.js"></script>
+  <script src="phonetics-data.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
